@@ -1,0 +1,12 @@
+dwisiswant0/apkleaks 120 6400
+edoardottt/cariddi 922 3847
+deepfence/SecretScanner 978 3399
+hannob/snallygaster 282 2113
+tillson/git-hound 637 1475
+techjacker/repo-security-scanner 138 1159
+Pantheon-Security/medusa 37066 1025
+MaxHu-xuan/chat-archive-guard 154 985
+EwenQuim/entropy 557 735
+liamg/dismember 737 673
+trufflesecurity/force-push-scanner 1386 494
+redhuntlabs/BucketLoot 9761 445
