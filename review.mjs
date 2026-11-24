@@ -210,28 +210,26 @@ export function triageFindings(root, findings) {
  * @returns {'fixture'|'rulefile'|'doc'|'artifact'|'real'}
  */
 function triageContext(relPath, lineText, value) {
-  // The value decides first. A path can only *suggest* that a hit is a fixture; if the value looks
-  // like a real credential, a test path must not be allowed to bury it. This is the arm the four-cell
-  // test showed was missing: a real key under tests/ was routed to 'fixture' and never surfaced.
-  const placeholder = looksPlaceholder(value)
-  const fixturePath = isFixtureContext(relPath, lineText)
-  if (fixturePath && placeholder) return 'fixture'
-  if (!fixturePath && placeholder) return 'fixture'   // an obvious placeholder in src/ is still a placeholder
-  if (fixturePath && !placeholder) return 'real'      // real-shaped value in a test path: do not dismiss it
-
   const p = relPath.toLowerCase()
-  // 检测器的签名/规则定义文件：里面写的就是"密钥长什么样"的正则，必然命中自身（2026-11-24 普查实测：
-  // tillson/git-hound 的 31 条"真泄露"全部来自它自己的 rules/*.yml）。
+  // 1) 先判"这个文件是什么"。规则文件、文档、构建产物、检测器自身、知识库快照，是按文件性质定的，
+  //    与命中的值长什么样无关——把值判断放在前面会让 rules/gitleaks.toml 被归成 fixture
+  //    （2026-11-24 自查：改成值优先后，这个回归立刻出现，普查的 33 条 rulefile 会被改写）。
   if (/(gitleaks\.toml|\.gitleaks|detect-secrets|secrets?[-_]?baseline|secret-patterns?)/.test(p)) return 'rulefile'
   if (/(^|\/)(rules|signatures|patterns|detectors)(\/|$)/.test(p)) return 'rulefile'
   if (/(regex|regexes|patterns?|signatures?|rules?)\.[a-z]+$/.test(p)) return 'rulefile'
   if (/\.example\.(yml|yaml|json|env|toml)$|example\.[a-z]+\.(yml|yaml|json)$/.test(p)) return 'doc'
   if (p.endsWith('.md') || p.endsWith('.mdx') || p.endsWith('.txt') || p.includes('/docs/')) return 'doc'
   if (/(^|\/)(lib|dist|build|out|chunks|vendor)(\/|$)/.test(p) || /\.min\.(js|css)$/.test(p)) return 'artifact'
-  // 检测器自身：文件就是"找密钥/找泄露"的实现，里面必然出现样例形态（本仓库实测 4 条全属此类）。
   if (/(verify|check|scan|audit|guard|lint)[-_\w]*secret|secret[-_]?(scan|check|detect|guard)/.test(p)) return 'detector'
-  // 数据/知识库快照：把文档内容存成 json/ndjson 的库文件（如 okf.json），命中来自文档正文而非运行代码。
   if (/\.(json|ndjson|jsonl)$/.test(p) && /(store|snapshot|corpus|knowledge|okf|memory)/.test(p)) return 'snapshot'
+
+  // 2) 再判"这个值真不真"。值决定 real 还是 fixture，路径只能提示。
+  //    真形状的值即使放在测试路径下也不许埋（假阴性方向）；明显占位符即使在 src 下也不算泄露。
+  if (looksPlaceholder(value)) return 'fixture'
+  if (isFixtureContext(relPath, lineText)) {
+    // 路径说是夹具、值却像真的：按 real 上报，让客户看见而不是替客户决定
+    return 'real'
+  }
   return 'real'
 }
 
@@ -466,6 +464,10 @@ function selfTest() {
     ['fake value in tests/', triageContext('tests/fixture.js', 'x', FAKE), 'fixture'],
     ['real value in tests/ (must not be buried)', triageContext('tests/real-leak.js', 'x', REAL), 'real'],
     ['placeholder value in src/', triageContext('src/demo-placeholder.js', 'x', FAKE), 'fixture'],
+    // Ordering guard: a rule file is a rule file whatever its values look like. Adding the value
+    // check before the file-nature check turned rules/gitleaks.toml into a fixture and would have
+    // rewritten the census's 33 rulefile rows (caught by re-running the published fixture).
+    ['rule file stays rulefile', triageContext('rules/gitleaks.toml', 'x', FAKE), 'rulefile'],
   ]
   let bad = 0
   for (const [name, got, want] of cells) {
